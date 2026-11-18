@@ -2420,7 +2420,7 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
           t.id === taskId
             ? {
                 ...t,
-                status: 'rejected',
+                status: 'in_progress',
                 approval: {
                   status: 'rejected',
                   reviewedBy: currentUser.id,
@@ -2440,7 +2440,7 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
           id: 'msg_sys_' + Date.now(),
           chatId: task.sourceChatId,
           senderId: 'system',
-          text: `Task ${task.code} rejected by ${currentUser.name}: ${reason}`,
+          text: `Task ${task.code} rejected by ${currentUser.name}: ${reason}. Returned to In Progress for corrections.`,
           type: 'system',
           timestamp: now,
           status: 'read',
@@ -2449,7 +2449,7 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
         dmsApi.sendChatMessage(sysMsg).catch(() => {});
       }
 
-      addToast(`Task ${task.code} rejected. Sent for revisions.`, 'info');
+      addToast(`Task ${task.code} rejected and returned to In Progress for revisions.`, 'info');
     },
     [tasks, currentUser, addToast]
   );

@@ -1351,6 +1351,15 @@ class DmsApiService {
             reviewedBy: String(t.approved_by_id[0]),
             reviewedAt: t.updated_at,
           }
+        : (t.rejected_by_id?.length || t.task_approval?.approval_status === 'rejected')
+        ? {
+            status: 'rejected',
+            reviewedBy: String(t.rejected_by_id?.[0] || ''),
+            reason: Array.isArray(t.task_approval?.rejected_note) && t.task_approval.rejected_note.length > 0
+              ? t.task_approval.rejected_note[t.task_approval.rejected_note.length - 1]?.note
+              : (typeof t.task_approval?.rejected_note === 'string' ? t.task_approval.rejected_note : undefined),
+            reviewedAt: t.updated_at,
+          }
         : undefined,
       proofRequired: Boolean(t.proof_required || (movItemsList.length > 0)),
       attachments,
@@ -1359,6 +1368,9 @@ class DmsApiService {
       lastProgressNotes: t.last_progress_notes || undefined,
       movItems: movItemsList,
       movAssignments: t.mov_assignments || [],
+      approvalRequiredUserIds: Array.isArray(t.approval_required_user_ids)
+        ? t.approval_required_user_ids.map(String)
+        : [],
       rawTask: t,
     };
   }
@@ -1571,11 +1583,13 @@ class DmsApiService {
    */
   async approveTask(taskId: string, approve: boolean, note?: string): Promise<Task> {
     const id = parseInt(taskId, 10);
+    const reasonText = note || (approve ? 'Approved in Chat' : 'Rejected in Chat');
     await this.request(`/tasks/${id}/approve`, {
       method: 'POST',
       body: JSON.stringify({
         approve,
-        note: note || (approve ? 'Approved in Chat' : 'Rejected in Chat'),
+        note: reasonText,
+        reason: reasonText,
       }),
     });
     const updated = await this.fetchTaskById(taskId);

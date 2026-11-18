@@ -154,11 +154,18 @@ export const TaskCard: React.FC<TaskCardProps> = ({
         </div>
 
         {/* Live Status Badge */}
-        <div
-          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] sm:text-[11px] font-semibold shrink-0 ${status.bg} ${status.text}`}
-        >
-          <StatusIcon className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-          <span>{status.label}</span>
+        <div className="flex items-center gap-1 shrink-0">
+          {task.status === 'in_progress' && task.approval?.status === 'rejected' && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] sm:text-[11px] font-semibold bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300">
+              Needs Revision
+            </span>
+          )}
+          <div
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] sm:text-[11px] font-semibold ${status.bg} ${status.text}`}
+          >
+            <StatusIcon className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+            <span>{status.label}</span>
+          </div>
         </div>
       </div>
 

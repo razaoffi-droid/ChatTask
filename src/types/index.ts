@@ -138,6 +138,7 @@ export interface Task {
   movAssignments?: Array<{ mov_index: number; user_id: number | null }>;
   workflowType?: string;
   taskType?: string;
+  approvalRequiredUserIds?: string[];
   rawTask?: any;
 }
 

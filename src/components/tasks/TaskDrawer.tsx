@@ -78,7 +78,13 @@ export const TaskDrawer: React.FC = () => {
   );
 
   // Robust numeric ID checks matching ERP-Task backend & view rules
-  const isCreator = Number(activeTask.creatorId) === currentUid;
+  const taskCreatorId = Number(
+    activeTask.creatorId ||
+    (activeTask as any).created_by_id ||
+    (activeTask as any).rawTask?.created_by_id ||
+    (activeTask as any).rawTask?.created_by?.id
+  );
+  const isCreator = taskCreatorId > 0 && taskCreatorId === currentUid;
   const isAssignee = activeTask.assigneeIds.some((id) => Number(id) === currentUid);
   const isReporter = Boolean(
     activeTask.reporterIds && activeTask.reporterIds.map(String).includes(String(currentUser.id))
@@ -88,6 +94,26 @@ export const TaskDrawer: React.FC = () => {
     currentUser.role?.toLowerCase() === 'super_admin' ||
     currentUser.department?.toLowerCase() === 'admin';
   const isManagement = isSuperAdmin || isCreator || isReporter;
+
+  const approverIds: string[] = useMemo(() => {
+    const raw =
+      (activeTask as any).approvalRequiredUserIds ||
+      (activeTask as any).approval_required_user_ids ||
+      (activeTask as any).rawTask?.approval_required_user_ids ||
+      [];
+    return Array.isArray(raw) ? raw.map(String) : [];
+  }, [activeTask]);
+
+  const isConfiguredApprover = approverIds.includes(String(currentUser.id));
+
+  const canApproveOrReject = useMemo(() => {
+    if (isSuperAdmin) return true;
+    if (approverIds.length > 0) {
+      return isConfiguredApprover;
+    }
+    return isCreator || isReporter;
+  }, [isSuperAdmin, approverIds, isConfiguredApprover, isCreator, isReporter]);
+
   const isApprovalWorkflow =
     (activeTask as any).workflowType === 'approval_required' ||
     (activeTask as any).workflow_type === 'approval_required' ||
@@ -378,7 +404,9 @@ export const TaskDrawer: React.FC = () => {
           )}
 
           {/* Rejected banner */}
-          {activeTask.status === 'rejected' && (
+          {(activeTask.status === 'rejected' || activeTask.approval?.status === 'rejected') &&
+            activeTask.status !== 'completed' &&
+            activeTask.status !== 'closed' && (
             <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-xs text-rose-900 dark:text-rose-200">
               <div className="flex items-center gap-1.5 font-bold mb-0.5">
                 <UserX className="w-4 h-4 text-rose-600" />
@@ -387,7 +415,7 @@ export const TaskDrawer: React.FC = () => {
               <p className="text-[11px] opacity-90">
                 {activeTask.approval?.reason
                   ? `Reason: "${activeTask.approval.reason}"`
-                  : 'Deliverables were rejected. Please resume work in progress and address feedback.'}
+                  : 'Deliverables were rejected. The task has been returned to In Progress for revisions.'}
               </p>
             </div>
           )}
@@ -504,7 +532,7 @@ export const TaskDrawer: React.FC = () => {
             )}
 
             {/* 4. When UNDER_REVIEW (Pending Approval) */}
-            {activeTask.status === 'under_review' && isManagement && (
+            {activeTask.status === 'under_review' && canApproveOrReject && (
               <>
                 <button
                   onClick={() => approveTask(activeTask.id)}
@@ -552,7 +580,7 @@ export const TaskDrawer: React.FC = () => {
             {/* 7. When COMPLETED */}
             {activeTask.status === 'completed' && (
               <>
-                {isManagement && (
+                {(isCreator || isSuperAdmin) && (
                   <button
                     onClick={() => handleStatusChangeClick('closed')}
                     disabled={isUpdatingStatus}
@@ -562,7 +590,7 @@ export const TaskDrawer: React.FC = () => {
                     <span>Close Task</span>
                   </button>
                 )}
-                {isManagement && (
+                {(isCreator || isSuperAdmin) && (
                   <button
                     onClick={() => openReasonModal('reopen')}
                     disabled={isUpdatingStatus}
@@ -575,7 +603,7 @@ export const TaskDrawer: React.FC = () => {
             )}
 
             {/* 8. When CLOSED */}
-            {activeTask.status === 'closed' && isManagement && (
+            {activeTask.status === 'closed' && (isCreator || isSuperAdmin) && (
               <button
                 onClick={() => openReasonModal('reopen')}
                 disabled={isUpdatingStatus}
