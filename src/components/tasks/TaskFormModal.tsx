@@ -830,6 +830,7 @@ export const TaskFormModal: React.FC = () => {
     if (isCreateTaskModalOpen) {
       setError('');
       setSubmitting(false);
+      setApproverUsers([]);
 
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
@@ -1039,6 +1040,13 @@ export const TaskFormModal: React.FC = () => {
     // If switching frequency to other, clear custom days
     if (name === 'recurrence_frequency' && value !== 'other') {
       next.custom_recurrence_days = '';
+    }
+
+    if (name === 'workflow_type') {
+      next.approval_required = value === 'approval_required';
+      if (value !== 'approval_required') {
+        setApproverUsers([]);
+      }
     }
 
     // Automatically set start_date to today if priority is 'critical'

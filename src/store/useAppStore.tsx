@@ -123,7 +123,12 @@ interface AppStoreContextType {
     movAssignments?: Array<{ mov_index: number; user_id: number | null }>;
     assignedUsersMeta?: Array<{ user_id: number; department: string }>;
   }) => Promise<Task>;
-  updateTaskStatus: (taskId: string, newStatus: TaskStatus) => Promise<void>;
+  updateTaskStatus: (
+    taskId: string,
+    newStatus: TaskStatus,
+    reason?: string,
+    adminOverride?: boolean
+  ) => Promise<void>;
   submitProof: (
     taskId: string,
     photoUrl: string,
@@ -2130,34 +2135,42 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
   // DMS TASK INTEGRATION: UPDATE TASK STATUS
   // ========================================================
   const updateTaskStatus = useCallback(
-    async (taskId: string, newStatus: TaskStatus) => {
+    async (
+      taskId: string,
+      newStatus: TaskStatus,
+      reason?: string,
+      adminOverride?: boolean
+    ) => {
       const task = tasks.find((t) => t.id === taskId);
       if (!task) return;
 
       const now = new Date().toISOString();
-      let targetStatus = newStatus;
-
-      if (newStatus === 'completed' && task.requiresApproval && task.creatorId !== currentUser.id) {
-        targetStatus = 'under_review';
-        addToast(`Submitted for review. Awaiting approval from ${getUserById(task.creatorId)?.name || 'Creator'}`, 'info');
-      }
+      const targetStatus = newStatus;
 
       const statusLabels: Record<TaskStatus, string> = {
         todo: 'To Do',
         in_progress: 'In Progress',
-        under_review: 'Under Review',
+        under_review: 'Pending Approval',
+        approved: 'Approved',
+        rejected: 'Rejected',
         completed: 'Completed',
+        closed: 'Closed',
         blocked: 'Blocked',
+        cancelled: 'Cancelled',
       };
 
       try {
-        // Transition status directly in DMS API
-        await dmsApi.updateTaskStatus(taskId, targetStatus);
+        // Transition status directly via centralized state machine
+        await dmsApi.updateTaskStatus(taskId, targetStatus, reason, adminOverride);
+
+        const activityAction = reason
+          ? `Changed status to ${statusLabels[targetStatus]}: "${reason}"`
+          : `Changed status to ${statusLabels[targetStatus]}`;
 
         const activityLogItem = {
           id: 'act_' + Date.now(),
           userId: currentUser.id,
-          action: `Changed status to ${statusLabels[targetStatus]}`,
+          action: activityAction,
           timestamp: now,
         };
 
@@ -2179,7 +2192,7 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
             id: 'msg_sys_' + Date.now(),
             chatId: task.sourceChatId,
             senderId: 'system',
-            text: `Task ${task.code} marked ${statusLabels[targetStatus]} by ${currentUser.name}`,
+            text: `Task ${task.code} status changed to ${statusLabels[targetStatus]} by ${currentUser.name}${reason ? ` (${reason})` : ''}`,
             type: 'system',
             timestamp: now,
             status: 'read',
@@ -2190,11 +2203,8 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
 
         addToast(`Task status updated to ${statusLabels[targetStatus]}`, 'success');
       } catch (err: any) {
-        addToast(`Update note: ${err?.message}`, 'warning');
-        // Still update local UI state with warning
-        setTasks((prev) =>
-          prev.map((t) => (t.id === taskId ? { ...t, status: targetStatus, updatedAt: now } : t))
-        );
+        addToast(err?.message || 'Failed to update task status', 'warning');
+        throw err;
       }
     },
     [tasks, currentUser, getUserById, addToast]
@@ -2329,14 +2339,15 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
       const activityLogItem = {
         id: 'act_' + Date.now(),
         userId: currentUser.id,
-        action: `Approved task completion`,
+        action: `Approved task deliverables`,
         timestamp: now,
       };
 
       try {
-        await dmsApi.updateTaskStatus(taskId, 'completed');
+        await dmsApi.approveTask(taskId, true);
       } catch (err: any) {
-        console.warn('Approve sync:', err?.message);
+        addToast(err?.message || 'Failed to approve task', 'warning');
+        return;
       }
 
       setTasks((prev) =>
@@ -2344,7 +2355,7 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
           t.id === taskId
             ? {
                 ...t,
-                status: 'completed',
+                status: 'approved',
                 approval: {
                   status: 'approved',
                   reviewedBy: currentUser.id,
@@ -2362,7 +2373,7 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
           id: 'msg_sys_' + Date.now(),
           chatId: task.sourceChatId,
           senderId: 'system',
-          text: `Task ${task.code} approved and completed by ${currentUser.name}`,
+          text: `Task ${task.code} approved by ${currentUser.name}`,
           type: 'system',
           timestamp: now,
           status: 'read',
@@ -2386,7 +2397,7 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
       const activityLogItem = {
         id: 'act_' + Date.now(),
         userId: currentUser.id,
-        action: `Rejected completion: "${reason}"`,
+        action: `Rejected approval: "${reason}"`,
         timestamp: now,
       };
 
@@ -2398,10 +2409,10 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
       };
 
       try {
-        await dmsApi.addTaskComment(taskId, `[Approval Rejected]: ${reason}`);
-        await dmsApi.updateTaskStatus(taskId, 'in_progress');
+        await dmsApi.approveTask(taskId, false, reason);
       } catch (err: any) {
-        console.warn('Reject sync:', err?.message);
+        addToast(err?.message || 'Failed to reject task', 'warning');
+        return;
       }
 
       setTasks((prev) =>
@@ -2409,7 +2420,7 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
           t.id === taskId
             ? {
                 ...t,
-                status: 'in_progress',
+                status: 'rejected',
                 approval: {
                   status: 'rejected',
                   reviewedBy: currentUser.id,
@@ -2429,7 +2440,7 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
           id: 'msg_sys_' + Date.now(),
           chatId: task.sourceChatId,
           senderId: 'system',
-          text: `${currentUser.name} requested changes on ${task.code}: "${reason}"`,
+          text: `Task ${task.code} rejected by ${currentUser.name}: ${reason}`,
           type: 'system',
           timestamp: now,
           status: 'read',
@@ -2438,7 +2449,7 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
         dmsApi.sendChatMessage(sysMsg).catch(() => {});
       }
 
-      addToast(`Task moved to In Progress`, 'warning');
+      addToast(`Task ${task.code} rejected. Sent for revisions.`, 'info');
     },
     [tasks, currentUser, addToast]
   );

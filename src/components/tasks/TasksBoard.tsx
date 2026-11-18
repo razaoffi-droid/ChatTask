@@ -51,7 +51,9 @@ export const TasksBoard: React.FC = () => {
     }
 
     const now = Date.now();
-    const isOverdue = new Date(task.dueDate).getTime() < now && task.status !== 'completed';
+    const isOverdue =
+      new Date(task.dueDate).getTime() < now &&
+      !['completed', 'closed', 'cancelled'].includes(task.status);
 
     if (activeFilterTab === 'my') {
       return task.assigneeIds?.map(String).includes(String(currentUser.id));
@@ -85,7 +87,9 @@ export const TasksBoard: React.FC = () => {
   ).length;
   const reviewCount = deptTasks.filter((t) => t.status === 'under_review').length;
   const overdueCount = deptTasks.filter(
-    (t) => new Date(t.dueDate).getTime() < Date.now() && t.status !== 'completed'
+    (t) =>
+      new Date(t.dueDate).getTime() < Date.now() &&
+      !['completed', 'closed', 'cancelled'].includes(t.status)
   ).length;
   const teamTasksCount = deptTasks.filter(
     (t) =>
@@ -309,7 +313,19 @@ export const TasksBoard: React.FC = () => {
           /* Kanban Board View */
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 h-full items-start overflow-x-auto">
             {kanbanColumns.map((col) => {
-              const colTasks = filteredTasks.filter((t) => t.status === col.id);
+              const colTasks = filteredTasks.filter((t) => {
+                if (col.id === 'todo') return t.status === 'todo';
+                if (col.id === 'in_progress') return t.status === 'in_progress' || t.status === 'blocked';
+                if (col.id === 'under_review')
+                  return (
+                    t.status === 'under_review' ||
+                    t.status === 'approved' ||
+                    t.status === 'rejected'
+                  );
+                if (col.id === 'completed')
+                  return t.status === 'completed' || t.status === 'closed';
+                return t.status === col.id;
+              });
               const Icon = col.icon;
               return (
                 <div

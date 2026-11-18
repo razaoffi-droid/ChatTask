@@ -24,6 +24,8 @@ import {
   Loader2,
   User as UserIcon,
   FileText,
+  Archive,
+  XCircle,
 } from 'lucide-react';
 
 export const TaskDrawer: React.FC = () => {
@@ -50,6 +52,23 @@ export const TaskDrawer: React.FC = () => {
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [togglingItemId, setTogglingItemId] = useState<string | null>(null);
 
+  // Mandatory Reason Dialog State (Reject, Block, Reopen, Cancel)
+  const [reasonModalConfig, setReasonModalConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    actionLabel: string;
+    actionType: 'reject' | 'block' | 'reopen' | 'cancel';
+    targetStatus?: TaskStatus;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    actionLabel: '',
+    actionType: 'reject',
+  });
+  const [modalReasonText, setModalReasonText] = useState('');
+
   if (!isTaskDrawerOpen || !activeTask) return null;
 
   const currentUid = Number(currentUser.id);
@@ -61,9 +80,20 @@ export const TaskDrawer: React.FC = () => {
   // Robust numeric ID checks matching ERP-Task backend & view rules
   const isCreator = Number(activeTask.creatorId) === currentUid;
   const isAssignee = activeTask.assigneeIds.some((id) => Number(id) === currentUid);
+  const isReporter = Boolean(
+    activeTask.reporterIds && activeTask.reporterIds.map(String).includes(String(currentUser.id))
+  );
   const isSuperAdmin =
-    currentUser.role?.toLowerCase() === 'admin' || currentUser.role?.toLowerCase() === 'super_admin';
-  const isTerminal = ['completed', 'closed', 'cancelled', 'rejected', 'pending_approval', 'approved'].includes(
+    currentUser.role?.toLowerCase() === 'admin' ||
+    currentUser.role?.toLowerCase() === 'super_admin' ||
+    currentUser.department?.toLowerCase() === 'admin';
+  const isManagement = isSuperAdmin || isCreator || isReporter;
+  const isApprovalWorkflow =
+    (activeTask as any).workflowType === 'approval_required' ||
+    (activeTask as any).workflow_type === 'approval_required' ||
+    activeTask.requiresApproval;
+
+  const isTerminal = ['closed', 'cancelled'].includes(
     (activeTask.status || '').toLowerCase()
   );
 
@@ -75,9 +105,10 @@ export const TaskDrawer: React.FC = () => {
       (isCreator && (!activeTask.movAssignments || activeTask.movAssignments.length === 0)));
 
   const isOverdue =
-    new Date(activeTask.dueDate).getTime() < Date.now() && activeTask.status !== 'completed';
+    new Date(activeTask.dueDate).getTime() < Date.now() &&
+    !['completed', 'closed', 'cancelled'].includes(activeTask.status);
 
-  const handleStatusChangeClick = async (targetStatus: TaskStatus) => {
+  const handleStatusChangeClick = async (targetStatus: TaskStatus, reason?: string) => {
     if (
       (targetStatus === 'completed' || targetStatus === 'under_review') &&
       activeTask.proofRequired &&
@@ -89,7 +120,74 @@ export const TaskDrawer: React.FC = () => {
 
     setIsUpdatingStatus(true);
     try {
-      await updateTaskStatus(activeTask.id, targetStatus);
+      await updateTaskStatus(activeTask.id, targetStatus, reason);
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  const openReasonModal = (actionType: 'reject' | 'block' | 'reopen' | 'cancel') => {
+    setModalReasonText('');
+    switch (actionType) {
+      case 'reject':
+        setReasonModalConfig({
+          isOpen: true,
+          title: 'Reject Task Deliverables',
+          description:
+            'Please provide a mandatory reason for requesting revisions. The task will return to In Progress for assignee corrections.',
+          actionLabel: 'Confirm Rejection',
+          actionType: 'reject',
+          targetStatus: 'rejected',
+        });
+        break;
+      case 'block':
+        setReasonModalConfig({
+          isOpen: true,
+          title: 'Block Task',
+          description:
+            'Please provide a mandatory reason explaining the roadblock or blocker preventing work.',
+          actionLabel: 'Confirm Block',
+          actionType: 'block',
+          targetStatus: 'blocked',
+        });
+        break;
+      case 'reopen':
+        setReasonModalConfig({
+          isOpen: true,
+          title: 'Reopen Task',
+          description:
+            'Please provide a mandatory reason explaining why this task is being reopened. It will return to In Progress.',
+          actionLabel: 'Confirm Reopen',
+          actionType: 'reopen',
+          targetStatus: 'in_progress',
+        });
+        break;
+      case 'cancel':
+        setReasonModalConfig({
+          isOpen: true,
+          title: 'Cancel Task',
+          description:
+            'Please provide a mandatory cancellation reason. Cancelled tasks become inactive.',
+          actionLabel: 'Confirm Cancellation',
+          actionType: 'cancel',
+          targetStatus: 'cancelled',
+        });
+        break;
+    }
+  };
+
+  const handleConfirmReasonModal = async () => {
+    if (!modalReasonText.trim()) return;
+    const reason = modalReasonText.trim();
+    setIsUpdatingStatus(true);
+    try {
+      if (reasonModalConfig.actionType === 'reject') {
+        await rejectTask(activeTask.id, reason);
+      } else if (reasonModalConfig.targetStatus) {
+        await updateTaskStatus(activeTask.id, reasonModalConfig.targetStatus, reason);
+      }
+      setReasonModalConfig((prev) => ({ ...prev, isOpen: false }));
+      setModalReasonText('');
     } finally {
       setIsUpdatingStatus(false);
     }
@@ -185,16 +283,27 @@ export const TaskDrawer: React.FC = () => {
             </span>
 
             <span
-              className={`px-2 py-0.5 rounded text-[11px] font-semibold ${activeTask.status === 'completed'
+              className={`px-2 py-0.5 rounded text-[11px] font-semibold capitalize ${
+                activeTask.status === 'completed'
                   ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-                  : activeTask.status === 'under_review'
-                    ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
-                    : activeTask.status === 'in_progress'
-                      ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300'
-                      : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                }`}
+                  : activeTask.status === 'approved'
+                    ? 'bg-teal-50 text-teal-700 dark:bg-teal-950/60 dark:text-teal-300'
+                    : activeTask.status === 'under_review'
+                      ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                      : activeTask.status === 'rejected'
+                        ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                        : activeTask.status === 'blocked'
+                          ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                          : activeTask.status === 'in_progress'
+                            ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300'
+                            : activeTask.status === 'closed'
+                              ? 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200'
+                              : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+              }`}
             >
-              {activeTask.status.replace('_', ' ')}
+              {activeTask.status === 'under_review'
+                ? 'Pending Approval'
+                : activeTask.status.replace('_', ' ')}
             </span>
           </div>
 
@@ -234,8 +343,10 @@ export const TaskDrawer: React.FC = () => {
         {/* Action Buttons: Status / Approval Flow */}
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 space-y-3">
           <div className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-            <span>Task Lifecycle</span>
-            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">Active</span>
+            <span>Workflow &amp; Lifecycle</span>
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono capitalize">
+              {isApprovalWorkflow ? 'Approval-Based' : 'Standard'}
+            </span>
           </div>
 
           {/* Under review banner */}
@@ -246,114 +357,247 @@ export const TaskDrawer: React.FC = () => {
                 <span>Task is Pending Approval</span>
               </div>
               <p className="text-[11px] opacity-90">
-                {isCreator
-                  ? 'You are the creator. Review submitted deliverables and sign off below.'
-                  : `Waiting for ${creator?.name || 'task manager'} to review.`}
+                {isManagement
+                  ? 'Deliverables have been submitted for review. Sign off or request revisions below.'
+                  : `Waiting for approvers to review deliverables.`}
               </p>
             </div>
           )}
 
-          {/* Approve / Reject Flow for Creator */}
-          {activeTask.status === 'under_review' && (isCreator || currentUser.role === 'admin' || currentUser.department === 'admin') ? (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => approveTask(activeTask.id)}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
-                >
-                  <UserCheck className="w-4 h-4" />
-                  <span>Approve &amp; Complete</span>
-                </button>
-                <button
-                  onClick={() => setShowRejectInput(!showRejectInput)}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/80 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-200 text-xs font-bold transition-colors cursor-pointer"
-                >
-                  <UserX className="w-4 h-4" />
-                  <span>Request Revisions</span>
-                </button>
+          {/* Approved banner */}
+          {activeTask.status === 'approved' && (
+            <div className="p-3 rounded-lg bg-teal-50 dark:bg-teal-950/50 border border-teal-200 dark:border-teal-800 text-xs text-teal-900 dark:text-teal-200">
+              <div className="flex items-center gap-1.5 font-bold mb-0.5">
+                <CheckCircle2 className="w-4 h-4 text-teal-600" />
+                <span>Task Deliverables Approved</span>
               </div>
-
-              {/* Reject Reason input */}
-              {showRejectInput && (
-                <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900 space-y-2 animate-in fade-in">
-                  <label className="block text-[11px] font-semibold text-rose-800 dark:text-rose-300">
-                    Reason for Revision Note:
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Please verify dispatch receipt and recalculate total..."
-                    value={rejectReason}
-                    onChange={(e) => setRejectReason(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none"
-                  />
-                  <div className="flex justify-end gap-2">
-                    <button
-                      onClick={() => setShowRejectInput(false)}
-                      className="px-2.5 py-1 text-xs text-slate-500 cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleConfirmReject}
-                      disabled={!rejectReason.trim()}
-                      className="px-3 py-1 bg-rose-600 text-white rounded-lg text-xs font-semibold disabled:opacity-40 cursor-pointer"
-                    >
-                      Confirm Reject
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            /* General Status Buttons */
-            <div className="flex flex-wrap gap-2">
-              {activeTask.status !== 'in_progress' && activeTask.status !== 'completed' && (
-                <button
-                  onClick={() => handleStatusChangeClick('in_progress')}
-                  disabled={isUpdatingStatus}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>Start Task</span>
-                </button>
-              )}
-
-              {activeTask.status !== 'completed' && activeTask.status !== 'under_review' && (
-                <button
-                  onClick={() => {
-                    if (activeTask.proofRequired && !activeTask.proof) {
-                      openProofModal(activeTask.id);
-                    } else if (activeTask.requiresApproval) {
-                      handleStatusChangeClick('under_review');
-                    } else {
-                      handleStatusChangeClick('completed');
-                    }
-                  }}
-                  disabled={isUpdatingStatus}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>
-                    {activeTask.requiresApproval
-                      ? 'Submit for Approval'
-                      : activeTask.proofRequired
-                        ? 'Submit Proof & Complete'
-                        : 'Mark Done'}
-                  </span>
-                </button>
-              )}
-
-              {activeTask.status === 'completed' && (
-                <button
-                  onClick={() => handleStatusChangeClick('in_progress')}
-                  disabled={isUpdatingStatus}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  <span>Reopen Task</span>
-                </button>
-              )}
+              <p className="text-[11px] opacity-90">
+                Approver has signed off on the deliverables. The task is ready to move to Completed.
+              </p>
             </div>
           )}
+
+          {/* Rejected banner */}
+          {activeTask.status === 'rejected' && (
+            <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-xs text-rose-900 dark:text-rose-200">
+              <div className="flex items-center gap-1.5 font-bold mb-0.5">
+                <UserX className="w-4 h-4 text-rose-600" />
+                <span>Revisions Requested / Deliverables Rejected</span>
+              </div>
+              <p className="text-[11px] opacity-90">
+                {activeTask.approval?.reason
+                  ? `Reason: "${activeTask.approval.reason}"`
+                  : 'Deliverables were rejected. Please resume work in progress and address feedback.'}
+              </p>
+            </div>
+          )}
+
+          {/* Blocked banner */}
+          {activeTask.status === 'blocked' && (
+            <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-xs text-rose-900 dark:text-rose-200">
+              <div className="flex items-center gap-1.5 font-bold mb-0.5">
+                <ShieldAlert className="w-4 h-4 text-rose-600" />
+                <span>Task is Blocked</span>
+              </div>
+              <p className="text-[11px] opacity-90">
+                An active impediment or blocker was recorded. Unblock task when ready to resume.
+              </p>
+            </div>
+          )}
+
+          {/* Closed banner */}
+          {activeTask.status === 'closed' && (
+            <div className="p-3 rounded-lg bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200">
+              <div className="flex items-center gap-1.5 font-bold mb-0.5">
+                <Archive className="w-4 h-4 text-slate-500" />
+                <span>Task is Formally Closed</span>
+              </div>
+              <p className="text-[11px] opacity-90">
+                This task has been verified, closed, and archived. Authorized managers can reopen if needed.
+              </p>
+            </div>
+          )}
+
+          {/* Cancelled banner */}
+          {activeTask.status === 'cancelled' && (
+            <div className="p-3 rounded-lg bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300">
+              <div className="flex items-center gap-1.5 font-bold mb-0.5">
+                <XCircle className="w-4 h-4 text-slate-500" />
+                <span>Task Cancelled</span>
+              </div>
+              <p className="text-[11px] opacity-90">
+                This task has been cancelled and is no longer active.
+              </p>
+            </div>
+          )}
+
+          {/* Action Buttons matching State Machine */}
+          <div className="flex flex-wrap gap-2 pt-1">
+            {/* 1. When TODO / OPEN */}
+            {activeTask.status === 'todo' && (
+              <button
+                onClick={() => handleStatusChangeClick('in_progress')}
+                disabled={isUpdatingStatus}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Start Task (In Progress)</span>
+              </button>
+            )}
+
+            {/* 2. When IN_PROGRESS */}
+            {activeTask.status === 'in_progress' && (
+              <>
+                {isApprovalWorkflow ? (
+                  <button
+                    onClick={() => {
+                      if (activeTask.proofRequired && !activeTask.proof) {
+                        openProofModal(activeTask.id);
+                      } else {
+                        handleStatusChangeClick('under_review');
+                      }
+                    }}
+                    disabled={isUpdatingStatus}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Submit for Approval</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      if (activeTask.proofRequired && !activeTask.proof) {
+                        openProofModal(activeTask.id);
+                      } else {
+                        handleStatusChangeClick('completed');
+                      }
+                    }}
+                    disabled={isUpdatingStatus}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Complete Task</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => openReasonModal('block')}
+                  disabled={isUpdatingStatus}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 border border-rose-200 dark:border-rose-900"
+                >
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  <span>Block Task</span>
+                </button>
+              </>
+            )}
+
+            {/* 3. When BLOCKED */}
+            {activeTask.status === 'blocked' && (
+              <button
+                onClick={() => handleStatusChangeClick('in_progress')}
+                disabled={isUpdatingStatus}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Unblock Task (Resume)</span>
+              </button>
+            )}
+
+            {/* 4. When UNDER_REVIEW (Pending Approval) */}
+            {activeTask.status === 'under_review' && isManagement && (
+              <>
+                <button
+                  onClick={() => approveTask(activeTask.id)}
+                  disabled={isUpdatingStatus}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span>Approve Deliverables</span>
+                </button>
+                <button
+                  onClick={() => openReasonModal('reject')}
+                  disabled={isUpdatingStatus}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/80 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-200 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <UserX className="w-3.5 h-3.5" />
+                  <span>Request Revisions (Reject)</span>
+                </button>
+              </>
+            )}
+
+            {/* 5. When APPROVED */}
+            {activeTask.status === 'approved' && (
+              <button
+                onClick={() => handleStatusChangeClick('completed')}
+                disabled={isUpdatingStatus}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Mark Completed</span>
+              </button>
+            )}
+
+            {/* 6. When REJECTED */}
+            {activeTask.status === 'rejected' && (isAssignee || isManagement) && (
+              <button
+                onClick={() => handleStatusChangeClick('in_progress')}
+                disabled={isUpdatingStatus}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Resume Work (In Progress)</span>
+              </button>
+            )}
+
+            {/* 7. When COMPLETED */}
+            {activeTask.status === 'completed' && (
+              <>
+                {isManagement && (
+                  <button
+                    onClick={() => handleStatusChangeClick('closed')}
+                    disabled={isUpdatingStatus}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Archive className="w-3.5 h-3.5" />
+                    <span>Close Task</span>
+                  </button>
+                )}
+                {isManagement && (
+                  <button
+                    onClick={() => openReasonModal('reopen')}
+                    disabled={isUpdatingStatus}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <span>Reopen Task</span>
+                  </button>
+                )}
+              </>
+            )}
+
+            {/* 8. When CLOSED */}
+            {activeTask.status === 'closed' && isManagement && (
+              <button
+                onClick={() => openReasonModal('reopen')}
+                disabled={isUpdatingStatus}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <span>Reopen Task</span>
+              </button>
+            )}
+
+            {/* Cancel Task (Allowed on any active non-terminal state by Management) */}
+            {!['completed', 'closed', 'cancelled'].includes(activeTask.status) && isManagement && (
+              <button
+                onClick={() => openReasonModal('cancel')}
+                disabled={isUpdatingStatus}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
+                title="Cancel Task"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                <span>Cancel Task</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Proof Submission Card (If proof submitted) */}
@@ -737,6 +981,58 @@ export const TaskDrawer: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Mandatory Reason Dialog */}
+      {reasonModalConfig.isOpen && (
+        <div className="fixed inset-0 z-60 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-5 space-y-4">
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
+                {reasonModalConfig.title}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                {reasonModalConfig.description}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Mandatory Reason / Note <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                value={modalReasonText}
+                onChange={(e) => setModalReasonText(e.target.value)}
+                placeholder="Enter a specific reason for this action..."
+                rows={3}
+                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setReasonModalConfig((prev) => ({ ...prev, isOpen: false }));
+                  setModalReasonText('');
+                }}
+                className="px-3 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReasonModal}
+                disabled={!modalReasonText.trim() || isUpdatingStatus}
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                {isUpdatingStatus && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{reasonModalConfig.actionLabel}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 };

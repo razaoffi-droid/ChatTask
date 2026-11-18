@@ -11,6 +11,9 @@ import {
   MessageSquare,
   ChevronRight,
   ListTodo,
+  CheckCheck,
+  XCircle,
+  Archive,
 } from 'lucide-react';
 
 interface TaskCardProps {
@@ -54,10 +57,22 @@ export const TaskCard: React.FC<TaskCardProps> = ({
       icon: Clock,
     },
     under_review: {
-      label: 'Under Review',
+      label: 'Pending Approval',
       bg: 'bg-amber-50 dark:bg-amber-950/60',
       text: 'text-amber-700 dark:text-amber-300',
       icon: AlertCircle,
+    },
+    approved: {
+      label: 'Approved',
+      bg: 'bg-teal-50 dark:bg-teal-950/60',
+      text: 'text-teal-700 dark:text-teal-300',
+      icon: CheckCheck,
+    },
+    rejected: {
+      label: 'Rejected',
+      bg: 'bg-rose-50 dark:bg-rose-950/60',
+      text: 'text-rose-700 dark:text-rose-300',
+      icon: XCircle,
     },
     completed: {
       label: 'Completed',
@@ -65,11 +80,23 @@ export const TaskCard: React.FC<TaskCardProps> = ({
       text: 'text-emerald-700 dark:text-emerald-300',
       icon: CheckCircle2,
     },
+    closed: {
+      label: 'Closed',
+      bg: 'bg-slate-100 dark:bg-slate-800',
+      text: 'text-slate-600 dark:text-slate-400',
+      icon: Archive,
+    },
     blocked: {
       label: 'Blocked',
       bg: 'bg-rose-50 dark:bg-rose-950/60',
       text: 'text-rose-700 dark:text-rose-300',
       icon: ShieldAlert,
+    },
+    cancelled: {
+      label: 'Cancelled',
+      bg: 'bg-slate-100 dark:bg-slate-800',
+      text: 'text-slate-500 dark:text-slate-400',
+      icon: XCircle,
     },
   };
 
@@ -86,7 +113,8 @@ export const TaskCard: React.FC<TaskCardProps> = ({
 
   const completedChecklistCount = task.checklist.filter((i) => i.completed).length;
   const isOverdue =
-    new Date(task.dueDate).getTime() < Date.now() && task.status !== 'completed';
+    new Date(task.dueDate).getTime() < Date.now() &&
+    !['completed', 'closed', 'cancelled'].includes(task.status);
 
   const formatDueDate = (dateStr: string) => {
     try {

@@ -43,7 +43,16 @@ export interface User {
   directReportIds?: string[];
 }
 
-export type TaskStatus = 'todo' | 'in_progress' | 'under_review' | 'completed' | 'blocked';
+export type TaskStatus =
+  | 'todo'
+  | 'in_progress'
+  | 'under_review'
+  | 'approved'
+  | 'rejected'
+  | 'completed'
+  | 'closed'
+  | 'blocked'
+  | 'cancelled';
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 
 export interface ChecklistItem {

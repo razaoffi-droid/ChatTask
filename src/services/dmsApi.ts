@@ -1134,12 +1134,18 @@ class DmsApiService {
         return 'in_progress';
       case 'pending_approval':
         return 'under_review';
+      case 'approved':
+        return 'approved';
+      case 'rejected':
+        return 'rejected';
+      case 'completed':
+        return 'completed';
+      case 'closed':
+        return 'closed';
       case 'blocked':
         return 'blocked';
-      case 'completed':
-      case 'closed':
-      case 'approved':
-        return 'completed';
+      case 'cancelled':
+        return 'cancelled';
       default:
         return 'todo';
     }
@@ -1156,10 +1162,18 @@ class DmsApiService {
         return 'in_progress';
       case 'under_review':
         return 'pending_approval';
+      case 'approved':
+        return 'approved';
+      case 'rejected':
+        return 'rejected';
       case 'completed':
         return 'completed';
+      case 'closed':
+        return 'closed';
       case 'blocked':
         return 'blocked';
+      case 'cancelled':
+        return 'cancelled';
       default:
         return 'open';
     }
@@ -1573,9 +1587,14 @@ class DmsApiService {
   }
 
   /**
-   * Update task status in DMS
+   * Update task status in DMS with centralized state machine transitions
    */
-  async updateTaskStatus(taskId: string, newStatus: TaskStatus, notes?: string): Promise<Task> {
+  async updateTaskStatus(
+    taskId: string,
+    newStatus: TaskStatus,
+    reason?: string,
+    adminOverride?: boolean
+  ): Promise<Task> {
     const id = parseInt(taskId, 10);
     if (isNaN(id)) {
       throw new Error(`Invalid task ID: ${taskId}`);
@@ -1589,82 +1608,21 @@ class DmsApiService {
       return currentTask;
     }
 
-    // DMS status transition rules:
-    // 1. in_progress -> pending_approval: DMS requires transitioning in_progress -> completed first,
-    //    and then completed -> pending_approval
-    if (oldDmsStatus === 'in_progress' && targetDmsStatus === 'pending_approval') {
-      try {
-        await this.request(`/tasks/${id}/status-transition`, {
-          method: 'POST',
-          body: JSON.stringify({
-            status: 'completed',
-            force_complete: true,
-            notes: notes || 'Work completed, submitting for approval',
-          }),
-        });
-      } catch {
-        await this.request(`/tasks/${id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status: 'completed' }),
-        }).catch(() => {});
-      }
-
-      try {
-        await this.request(`/tasks/${id}/status-transition`, {
-          method: 'POST',
-          body: JSON.stringify({
-            status: 'pending_approval',
-            notes: notes || 'Submitted for approval',
-          }),
-        });
-      } catch {
-        await this.request(`/tasks/${id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status: 'pending_approval' }),
-        }).catch(() => {});
-      }
-    } else if (targetDmsStatus === 'completed' && currentTask?.status === 'under_review') {
-      // Approving from review: try approve endpoint first
-      try {
-        await this.approveTask(taskId, true, notes || 'Approved via Chat');
-      } catch {
-        await this.request(`/tasks/${id}/status-transition`, {
-          method: 'POST',
-          body: JSON.stringify({
-            status: 'completed',
-            force_complete: true,
-            notes: notes || 'Approved and completed',
-          }),
-        }).catch(async () => {
-          await this.request(`/tasks/${id}`, {
-            method: 'PATCH',
-            body: JSON.stringify({ status: 'completed' }),
-          });
-        });
-      }
-    } else {
-      // Direct status transition
-      try {
-        await this.request(`/tasks/${id}/status-transition`, {
-          method: 'POST',
-          body: JSON.stringify({
-            status: targetDmsStatus,
-            force_complete: true,
-            notes: notes || `Status changed to ${newStatus} via ChatTask`,
-          }),
-        });
-      } catch (err: any) {
-        // Fallback to direct PATCH
-        try {
-          await this.request(`/tasks/${id}`, {
-            method: 'PATCH',
-            body: JSON.stringify({ status: targetDmsStatus }),
-          });
-        } catch (patchErr: any) {
-          console.warn(`DMS status update error on task #${taskId}:`, patchErr?.message);
-          throw patchErr;
-        }
-      }
+    // Direct status transition via centralized state machine
+    try {
+      await this.request(`/tasks/${id}/status-transition`, {
+        method: 'POST',
+        body: JSON.stringify({
+          status: targetDmsStatus,
+          force_complete: true,
+          reason,
+          notes: reason || `Status changed to ${newStatus} via ChatTask`,
+          admin_override: adminOverride,
+        }),
+      });
+    } catch (err: any) {
+      console.warn(`DMS status update error on task #${taskId}:`, err?.message);
+      throw err;
     }
 
     const updated = await this.fetchTaskById(taskId);
