@@ -697,6 +697,11 @@ export const TaskDrawer: React.FC = () => {
               <Calendar className="w-3.5 h-3.5" />
               <span>{formatDateTime(activeTask.dueDate)}</span>
             </div>
+            {(activeTask as any).originalDueDate && (activeTask as any).originalDueDate !== activeTask.dueDate && (
+              <div className="text-[10px] text-slate-400 dark:text-slate-500 line-through mt-0.5">
+                Orig: {formatDateTime((activeTask as any).originalDueDate)}
+              </div>
+            )}
           </div>
 
           <div>
