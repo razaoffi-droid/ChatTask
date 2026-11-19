@@ -462,7 +462,7 @@ export const TaskDrawer: React.FC = () => {
           {/* Action Buttons matching State Machine */}
           <div className="flex flex-wrap gap-2 pt-1">
             {/* 1. When TODO / OPEN */}
-            {activeTask.status === 'todo' && (
+            {(activeTask.status === 'todo' || activeTask.status === 'open' || activeTask.status === 'assigned') && (isAssignee || isSuperAdmin) && (
               <button
                 onClick={() => handleStatusChangeClick('in_progress')}
                 disabled={isUpdatingStatus}
@@ -474,7 +474,7 @@ export const TaskDrawer: React.FC = () => {
             )}
 
             {/* 2. When IN_PROGRESS */}
-            {activeTask.status === 'in_progress' && (
+            {activeTask.status === 'in_progress' && (isAssignee || isSuperAdmin) && (
               <>
                 {isApprovalWorkflow ? (
                   <button
@@ -520,7 +520,7 @@ export const TaskDrawer: React.FC = () => {
             )}
 
             {/* 3. When BLOCKED */}
-            {activeTask.status === 'blocked' && (
+            {activeTask.status === 'blocked' && (isAssignee || isSuperAdmin) && (
               <button
                 onClick={() => handleStatusChangeClick('in_progress')}
                 disabled={isUpdatingStatus}
@@ -554,7 +554,7 @@ export const TaskDrawer: React.FC = () => {
             )}
 
             {/* 5. When APPROVED */}
-            {activeTask.status === 'approved' && (
+            {activeTask.status === 'approved' && (isAssignee || isSuperAdmin) && (
               <button
                 onClick={() => handleStatusChangeClick('completed')}
                 disabled={isUpdatingStatus}
@@ -566,7 +566,7 @@ export const TaskDrawer: React.FC = () => {
             )}
 
             {/* 6. When REJECTED */}
-            {activeTask.status === 'rejected' && (isAssignee || isManagement) && (
+            {activeTask.status === 'rejected' && (isAssignee || isSuperAdmin) && (
               <button
                 onClick={() => handleStatusChangeClick('in_progress')}
                 disabled={isUpdatingStatus}
