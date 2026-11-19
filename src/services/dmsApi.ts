@@ -1368,6 +1368,7 @@ class DmsApiService {
       lastProgressNotes: t.last_progress_notes || undefined,
       movItems: movItemsList,
       movAssignments: t.mov_assignments || [],
+      approvalDueDate: t.approval_due_date ? String(t.approval_due_date) : undefined,
       approvalRequiredUserIds: Array.isArray(t.approval_required_user_ids)
         ? t.approval_required_user_ids.map(String)
         : [],
@@ -1439,6 +1440,7 @@ class DmsApiService {
     recurrenceEndType?: string;
     recurrenceEndDate?: string;
     recurrenceEndOccurrences?: number;
+    approvalDueDate?: string;
     approvalRequiredUserIds?: number[];
     movChecklist?: Array<{ text: string; checked?: boolean; checked_by_id?: number | null; checked_at?: string | null }>;
     movAssignments?: Array<{ mov_index: number; user_id: number | null }>;
@@ -1483,6 +1485,10 @@ class DmsApiService {
       recurrence_end_date: data.recurrenceEndDate || undefined,
       recurrence_end_occurrences: data.recurrenceEndOccurrences ? Number(data.recurrenceEndOccurrences) : undefined,
       approval_required: data.workflowType === 'approval_required' || !!data.requiresApproval,
+      approval_due_date:
+        data.workflowType === 'approval_required' || data.requiresApproval
+          ? data.approvalDueDate || undefined
+          : undefined,
       approval_required_user_ids: data.approvalRequiredUserIds,
       mov_checklist: movChecklist,
       mov_assignments: data.movAssignments,

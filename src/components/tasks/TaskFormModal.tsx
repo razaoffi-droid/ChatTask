@@ -784,6 +784,7 @@ export const TaskFormModal: React.FC = () => {
       custom_recurrence_days: '',
       start_date: new Date().toISOString().split('T')[0],
       due_date: '',
+      approval_due_date: '',
       project_name: '',
       recurrence_rule: '',
       recurrence_next_date: '',
@@ -859,6 +860,9 @@ export const TaskFormModal: React.FC = () => {
           due_date: taskModalInitialData.dueDate
             ? taskModalInitialData.dueDate.split('T')[0]
             : defaultDueDate,
+          approval_due_date: (taskModalInitialData as any).approvalDueDate
+            ? (taskModalInitialData as any).approvalDueDate.split('T')[0]
+            : '',
           project_name: '',
           recurrence_rule: '',
           recurrence_next_date: '',
@@ -1182,6 +1186,9 @@ export const TaskFormModal: React.FC = () => {
       if (!approverUsers || approverUsers.length === 0) {
         validationErrors.push('At least one approver is required for approval-required tasks.');
       }
+      if (form.start_date && form.approval_due_date && form.approval_due_date < form.start_date) {
+        validationErrors.push('Approval due date cannot be earlier than start date.');
+      }
     }
 
     if (form.task_type === 'recurring') {
@@ -1225,6 +1232,10 @@ export const TaskFormModal: React.FC = () => {
         recurrenceEndOccurrences: form.recurrence_end_occurrences
           ? parseInt(form.recurrence_end_occurrences, 10)
           : undefined,
+        approvalDueDate:
+          activeWorkflow === 'approval_required'
+            ? form.approval_due_date || undefined
+            : undefined,
         approvalRequiredUserIds:
           approverUsers.length > 0 ? approverUsers.map((u) => parseInt(String(u.id), 10)) : undefined,
         movChecklist: movItemsClean.map((item) => ({
@@ -1495,25 +1506,37 @@ export const TaskFormModal: React.FC = () => {
                 ]}
               />
 
-              {/* Approvers Pill (Conditional when approval_required) */}
+              {/* Approvers & Approval Due Date Pills (Conditional when approval_required) */}
               {form.workflow_type === 'approval_required' && (
-                <div
-                  className={`add-task-approver-field ${
-                    approverUsers.length > 0 ? 'is-filled' : 'is-empty'
-                  }`}
-                >
-                  <ClipboardList className="add-task-approver-icon" aria-hidden="true" />
-                  <SearchableUserSelect
-                    placeholder="Approvers"
-                    selectedUsers={approverUsers}
-                    onSelectUser={(u) => setApproverUsers((prev) => [...prev, u])}
-                    onRemoveUser={(id) =>
-                      setApproverUsers((prev) => prev.filter((u) => String(u.id) !== String(id)))
-                    }
-                    availableUsers={users}
-                    isApprover={true}
+                <>
+                  <div
+                    className={`add-task-approver-field ${
+                      approverUsers.length > 0 ? 'is-filled' : 'is-empty'
+                    }`}
+                  >
+                    <ClipboardList className="add-task-approver-icon" aria-hidden="true" />
+                    <SearchableUserSelect
+                      placeholder="Approvers"
+                      selectedUsers={approverUsers}
+                      onSelectUser={(u) => setApproverUsers((prev) => [...prev, u])}
+                      onRemoveUser={(id) =>
+                        setApproverUsers((prev) => prev.filter((u) => String(u.id) !== String(id)))
+                      }
+                      availableUsers={users}
+                      isApprover={true}
+                    />
+                  </div>
+
+                  <DatePill
+                    name="approval_due_date"
+                    value={form.approval_due_date}
+                    onChange={handleChange}
+                    icon={Calendar}
+                    placeholder="Approval due date"
+                    title="Approval Due Date"
+                    showDot
                   />
-                </div>
+                </>
               )}
             </div>
 

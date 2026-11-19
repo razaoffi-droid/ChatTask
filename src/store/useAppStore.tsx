@@ -118,6 +118,7 @@ interface AppStoreContextType {
     recurrenceEndType?: string;
     recurrenceEndDate?: string;
     recurrenceEndOccurrences?: number;
+    approvalDueDate?: string;
     approvalRequiredUserIds?: number[];
     movChecklist?: Array<{ text: string; checked?: boolean; checked_by_id?: number | null; checked_at?: string | null }>;
     movAssignments?: Array<{ mov_index: number; user_id: number | null }>;
@@ -2008,6 +2009,7 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
       recurrenceEndType?: string;
       recurrenceEndDate?: string;
       recurrenceEndOccurrences?: number;
+      approvalDueDate?: string;
       approvalRequiredUserIds?: number[];
       movChecklist?: Array<{ text: string; checked?: boolean; checked_by_id?: number | null; checked_at?: string | null }>;
       movAssignments?: Array<{ mov_index: number; user_id: number | null }>;
@@ -2035,6 +2037,7 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
           recurrenceEndType: data.recurrenceEndType,
           recurrenceEndDate: data.recurrenceEndDate,
           recurrenceEndOccurrences: data.recurrenceEndOccurrences,
+          approvalDueDate: data.approvalDueDate,
           approvalRequiredUserIds: data.approvalRequiredUserIds,
           movChecklist: data.movChecklist,
           movAssignments: data.movAssignments,
