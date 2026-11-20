@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { TaskStatus } from '../../types';
 import { formatDepartmentName } from '../../services/dmsApi';
@@ -462,7 +462,7 @@ export const TaskDrawer: React.FC = () => {
           {/* Action Buttons matching State Machine */}
           <div className="flex flex-wrap gap-2 pt-1">
             {/* 1. When TODO / OPEN */}
-            {(activeTask.status === 'todo' || activeTask.status === 'open' || activeTask.status === 'assigned') && (isAssignee || isSuperAdmin) && (
+            {(['todo', 'open', 'assigned'].includes(activeTask.status as string)) && (isAssignee || isSuperAdmin) && (
               <button
                 onClick={() => handleStatusChangeClick('in_progress')}
                 disabled={isUpdatingStatus}
