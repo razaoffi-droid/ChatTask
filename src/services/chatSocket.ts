@@ -15,7 +15,15 @@ class ChatSocketService {
   private markDeliveredTimers = new Map<string, NodeJS.Timeout>();
 
   private getSocketUrl(): string {
-    return getDmsBaseUrl();
+    const baseUrl = getDmsBaseUrl();
+    if (baseUrl.startsWith('/')) {
+      if (typeof window !== 'undefined' && window.location) {
+        const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+        return `${protocol}//${window.location.hostname}:3000`;
+      }
+      return 'http://localhost:3000';
+    }
+    return baseUrl;
   }
 
   public connect(token?: string, userId?: string): void {

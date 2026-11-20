@@ -21,8 +21,7 @@ export default defineConfig(() => {
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
       proxy: {
         '/dms-api': {
-          // target: 'http://localhost:3000', // Local development proxy
-          target: process.env.VITE_DMS_API_URL || 'https://mtjf-erp-backend.up.railway.app',
+          target: process.env.VITE_DMS_API_URL || 'http://localhost:3000',
           changeOrigin: true,
           rewrite: (p) => p.replace(/^\/dms-api/, ''),
         },

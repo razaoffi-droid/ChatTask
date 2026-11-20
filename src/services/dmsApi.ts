@@ -32,34 +32,46 @@ export const getDmsBaseUrl = (): string => {
 
   // 2. Vite build-time environment variables (VITE_DMS_API_URL or VITE_API_URL)
   const envUrl = (import.meta as any).env?.VITE_DMS_API_URL || (import.meta as any).env?.VITE_API_URL;
-  if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
-    return envUrl.trim().replace(/\/$/, '');
-  }
 
   // 3. Browser runtime environment inspection
   if (typeof window !== 'undefined' && window.location) {
     const hostname = window.location.hostname;
-    const protocol = window.location.protocol || 'https:';
+    const protocol = window.location.protocol || 'http:';
 
     // Production Railway check: if hosted on chattask.up.railway.app or any Railway domain
     if (hostname.includes('railway.app') || hostname.includes('chattask')) {
       return 'https://mtjf-erp-backend.up.railway.app';
     }
 
-    // Local / LAN development fallback:
-    // (Localhost development endpoints - commented for production reference)
-    // When running locally in offline development, default to local port 3000
+    // Local / LAN development:
+    // When running under the Vite dev server (port 3002), route via the same-origin '/dms-api' proxy
+    // to preserve session cookies, CSRF context, and avoid cross-origin cookie restrictions.
     const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
     if (isLocalhost) {
-      // return 'http://localhost:3000'; // local dev default
-      return 'https://mtjf-erp-backend.up.railway.app'; // fallback to Railway production backend
+      if (window.location.port === '3002') {
+        return '/dms-api';
+      }
+      if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '' && !envUrl.includes('railway.app')) {
+        return envUrl.trim().replace(/\/$/, '');
+      }
+      return `${protocol}//localhost:3000`;
     }
 
     // Local network device (e.g. testing from mobile or another PC on LAN IP 192.168.x.x)
     const isLocalSubnet = /^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(hostname);
     if (isLocalSubnet) {
+      if (window.location.port === '3002') {
+        return '/dms-api';
+      }
+      if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '' && !envUrl.includes('railway.app')) {
+        return envUrl.trim().replace(/\/$/, '');
+      }
       return `${protocol}//${hostname}:3000`;
     }
+  }
+
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
+    return envUrl.trim().replace(/\/$/, '');
   }
 
   // Fallback production backend URL
@@ -1202,17 +1214,42 @@ class DmsApiService {
    * Convert ChatTask TaskPriority to DMS priority
    */
   mapAppPriorityToDms(priority: TaskPriority | string): string {
-    switch (priority) {
+    const p = String(priority || '').toLowerCase().trim();
+    switch (p) {
       case 'urgent':
+      case 'critical':
         return 'critical';
       case 'high':
         return 'high';
       case 'low':
         return 'low';
       case 'medium':
+      case 'normal':
       default:
         return 'medium';
     }
+  }
+
+  mapAppDeptToDms(dept: string): string {
+    const d = String(dept || 'admin').toLowerCase().trim();
+    const map: Record<string, string> = {
+      administration: 'admin',
+      management: 'admin',
+      procurement: 'procurements',
+      procurements: 'procurements',
+      accounts: 'accounts_and_finance',
+      finance: 'accounts_and_finance',
+      accounts_and_finance: 'accounts_and_finance',
+      fundraising: 'fund_raising',
+      fund_raising: 'fund_raising',
+      executive: 'executive_office',
+      executive_office: 'executive_office',
+      audit: 'internal_audit',
+      internal_audit: 'internal_audit',
+      lab: 'aas_lab',
+      aas_lab: 'aas_lab',
+    };
+    return map[d] || d;
   }
 
   /**
@@ -1448,7 +1485,7 @@ class DmsApiService {
   }): Promise<Task> {
     const assignedUsers = data.assigneeIds.map((id) => parseInt(String(id), 10)).filter((n) => !isNaN(n) && n > 0);
     const dmsPriority = this.mapAppPriorityToDms(data.priority);
-    const dmsDept = data.department.toLowerCase();
+    const dmsDept = this.mapAppDeptToDms(data.department);
 
     // Format due_date and start_date to YYYY-MM-DD
     let dueDateFormatted = data.dueDate;
