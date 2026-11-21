@@ -2042,6 +2042,9 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
           movChecklist: data.movChecklist,
           movAssignments: data.movAssignments,
           assignedUsersMeta: data.assignedUsersMeta,
+          source: 'chattask',
+          sourceChatId: data.sourceChatId,
+          sourceMessageId: data.sourceMessageId,
         });
 
         // Attach local client metadata (sourceChatId, sourceMessageId)

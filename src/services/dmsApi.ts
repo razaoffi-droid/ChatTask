@@ -1482,6 +1482,10 @@ class DmsApiService {
     movChecklist?: Array<{ text: string; checked?: boolean; checked_by_id?: number | null; checked_at?: string | null }>;
     movAssignments?: Array<{ mov_index: number; user_id: number | null }>;
     assignedUsersMeta?: Array<{ user_id: number; department: string }>;
+    source?: string;
+    sourceId?: number | string;
+    sourceChatId?: string;
+    sourceMessageId?: string;
   }): Promise<Task> {
     const assignedUsers = data.assigneeIds.map((id) => parseInt(String(id), 10)).filter((n) => !isNaN(n) && n > 0);
     const dmsPriority = this.mapAppPriorityToDms(data.priority);
@@ -1504,11 +1508,29 @@ class DmsApiService {
       checked_at: null,
     }));
 
+    // Parse source_id as valid integer (int4 max 2147483647)
+    let parsedSourceId: number | undefined;
+    if (data.sourceId != null && !isNaN(Number(data.sourceId)) && Number(data.sourceId) > 0 && Number(data.sourceId) <= 2147483647) {
+      parsedSourceId = Number(data.sourceId);
+    } else if (data.sourceMessageId) {
+      const num = Number(data.sourceMessageId);
+      if (!isNaN(num) && num > 0 && num <= 2147483647) {
+        parsedSourceId = num;
+      }
+    } else if (data.sourceChatId) {
+      const num = Number(data.sourceChatId);
+      if (!isNaN(num) && num > 0 && num <= 2147483647) {
+        parsedSourceId = num;
+      }
+    }
+
     const payload: any = {
       title: data.title,
       description: data.description || '',
       department: dmsDept,
       priority: dmsPriority,
+      source: data.source || 'chattask',
+      source_id: parsedSourceId,
       start_date: startDateFormatted || undefined,
       due_date: dueDateFormatted,
       assigned_users: assignedUsers.length > 0 ? assignedUsers : [1],
