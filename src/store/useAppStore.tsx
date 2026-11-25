@@ -21,6 +21,7 @@ import { dmsApi, getDepartmentMeta, DepartmentMeta } from '../services/dmsApi';
 import { e2eeCrypto } from '../services/e2eeCrypto';
 import { chatSocket } from '../services/chatSocket';
 import { useInactivityTimeout, INACTIVITY_TIMEOUT_MS, LAST_ACTIVITY_KEY } from '../hooks/useInactivityTimeout';
+import { showSystemNotification, requestNotificationPermission } from '../services/serviceWorkerRegistration';
 
 interface Toast {
   id: string;
@@ -1045,7 +1046,21 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
 
       // 5. Dynamic Notifications update (Bell counter & alerts)
       if (delta.changed.notifications && delta.notifications) {
-        setNotifications(delta.notifications);
+        setNotifications((prev) => {
+          const prevIds = new Set(prev.map((p) => p.id));
+          const newNotifs = (delta.notifications || []).filter(
+            (n) => !prevIds.has(n.id) && !n.read && String(n.recipientId) === String(currentUserId)
+          );
+          for (const n of newNotifs) {
+            showSystemNotification(n.title || 'ChatTask Notification', {
+              body: n.body,
+              tag: `notif-${n.id}`,
+              taskId: n.taskId ? String(n.taskId) : undefined,
+              tab: n.taskId ? 'tasks' : 'notifications',
+            }).catch(() => {});
+          }
+          return delta.notifications || prev;
+        });
       }
     }, 30000);
 
@@ -1164,12 +1179,28 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
           });
         });
 
-        // Auto receipts
+        // Auto receipts & Background System Notifications
         if (isOtherSender) {
           if (activeChatIdRef.current === msgChatId) {
             dmsApi.markConversationRead(msgChatId, currentUserId).catch(() => {});
           } else {
             dmsApi.markConversationDelivered(msgChatId, currentUserId).catch(() => {});
+          }
+
+          // Trigger PWA system notification if app is hidden or viewing a different chat
+          if (typeof document !== 'undefined' && (document.hidden || activeChatIdRef.current !== msgChatId)) {
+            const sender = users.find((u) => String(u.id) === String(decryptedMsg.senderId));
+            const senderName = sender ? sender.name : (rawMsg.senderName || 'New message');
+            const previewText = decryptedMsg.text
+              ? (decryptedMsg.text.length > 80 ? decryptedMsg.text.slice(0, 80) + '...' : decryptedMsg.text)
+              : (decryptedMsg.voiceDuration ? 'Voice message' : 'Shared an attachment');
+
+            showSystemNotification(senderName, {
+              body: previewText,
+              tag: `chat-${msgChatId}`,
+              chatId: msgChatId,
+              tab: 'chats',
+            }).catch(() => {});
           }
         }
       })
@@ -1574,6 +1605,10 @@ export const AppStoreProvider: React.FC<{ children: ReactNode }> = ({ children }
           }
         }
         await refreshDmsData();
+        // Polite request for notification permissions in PWA
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+          requestNotificationPermission().catch(() => {});
+        }
         addToast(`Welcome back, ${loggedUser.name || 'User'}!`, 'success');
         return true;
       } catch (err: any) {

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { AppStoreProvider, useAppStore } from './store/useAppStore';
 import { TopBar } from './components/TopBar';
 import { BottomTabBar } from './components/BottomTabBar';
@@ -21,6 +21,9 @@ import { NotificationsList } from './components/notifications/NotificationsList'
 import { ProfileView } from './components/profile/ProfileView';
 import { MobileDeviceFrame } from './components/mobile/MobileDeviceFrame';
 import { LoginView } from './components/auth/LoginView';
+import { PwaUpdatePrompt } from './components/pwa/PwaUpdatePrompt';
+import { onPwaNavigate } from './services/serviceWorkerRegistration';
+import { chatSocket } from './services/chatSocket';
 
 const WorkspaceContent: React.FC = () => {
   const {
@@ -106,13 +109,73 @@ const WorkspaceContent: React.FC = () => {
 };
 
 const MainAppContent: React.FC = () => {
-  const { deviceView, isAuthenticated } = useAppStore();
+  const {
+    deviceView,
+    isAuthenticated,
+    setActiveMobileTab,
+    setActiveChatId,
+    navigateToTask,
+    refreshDmsData,
+  } = useAppStore();
+
+  // Background auto-reconnect and data sync on network restoration
+  useEffect(() => {
+    const handleOnline = () => {
+      chatSocket.reconnect();
+      refreshDmsData();
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [refreshDmsData]);
+
+  useEffect(() => {
+    // 1. Initial URL search params (e.g. from PWA shortcuts /?tab=tasks or notification deep links)
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab');
+      const chatId = params.get('chatId');
+      const taskId = params.get('taskId');
+
+      if (tab && ['chats', 'tasks', 'notifications', 'profile'].includes(tab)) {
+        setActiveMobileTab(tab as any);
+      }
+      if (chatId) {
+        setActiveMobileTab('chats');
+        setActiveChatId(chatId);
+      }
+      if (taskId) {
+        navigateToTask(taskId);
+      }
+    } catch (e) {
+      console.error('[ChatTask PWA] Error parsing URL search params:', e);
+    }
+
+    // 2. Service worker notification click deep links
+    const unsubscribe = onPwaNavigate((data) => {
+      if (data.chatId) {
+        setActiveMobileTab('chats');
+        setActiveChatId(String(data.chatId));
+      } else if (data.taskId) {
+        navigateToTask(String(data.taskId));
+      } else if (data.tab && ['chats', 'tasks', 'notifications', 'profile'].includes(data.tab)) {
+        setActiveMobileTab(data.tab);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [setActiveMobileTab, setActiveChatId, navigateToTask]);
 
   if (!isAuthenticated) {
     return (
       <div className="h-screen w-screen overflow-auto bg-slate-100 dark:bg-slate-950 font-sans">
         <LoginView />
         <ToastContainer />
+        <PwaUpdatePrompt />
       </div>
     );
   }
@@ -140,6 +203,7 @@ const MainAppContent: React.FC = () => {
       <GroupInfoDrawer />
       <TasksInChatDrawer />
       <ToastContainer />
+      <PwaUpdatePrompt />
     </div>
   );
 };

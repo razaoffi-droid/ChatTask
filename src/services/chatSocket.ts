@@ -139,6 +139,16 @@ class ChatSocketService {
     }
   }
 
+  public reconnect(): void {
+    if (this.socket) {
+      if (!this.socket.connected) {
+        this.socket.connect();
+      }
+    } else {
+      this.connect();
+    }
+  }
+
   public disconnect(): void {
     this.isExplicitlyDisconnected = true;
     if (this.socket) {
